@@ -2067,12 +2067,18 @@
             });
         }
         async function uploadMediaSection(section, input, button) {
-            if (!db || !isAdminLoggedIn || auth?.currentUser?.uid !== ADMIN_UID) return;
+            const user = auth?.currentUser;
+            if (!db || !user || user.uid !== ADMIN_UID) {
+                showToast('เซสชันแอดมินไม่พร้อม กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ค่ะ', 'fa-exclamation-circle');
+                return;
+            }
             const files = [...input.files];
             if (!files.length) return showToast('กรุณาเลือกภาพก่อนค่ะ', 'fa-exclamation-circle');
             button.disabled = true;
             let uploaded = 0;
             try {
+                // บังคับรีเฟรช ID token ก่อนเขียน Firestore เพื่อป้องกันกรณี token เก่าหลังล็อกอิน
+                await user.getIdToken(true);
                 for (const file of files) {
                     if (section.png && file.type !== 'image/png' && !/\.png$/i.test(file.name)) throw new Error('สแตมป์ต้องเป็นไฟล์ PNG ค่ะ');
                     button.textContent = `กำลังบันทึก ${uploaded + 1}/${files.length}...`;
@@ -2089,7 +2095,11 @@
                 showToast(`เพิ่มภาพ ${uploaded} ภาพแล้วค่ะ`);
             } catch (error) {
                 console.error('Uploading section images failed:', error);
-                showToast(`${uploaded ? `บันทึกแล้ว ${uploaded} ภาพ • ` : ''}${error.message || 'เพิ่มภาพไม่สำเร็จค่ะ'}`, 'fa-times-circle');
+                const permissionDenied = error?.code === 'permission-denied' || /Missing or insufficient permissions/i.test(error?.message || '');
+                const message = permissionDenied
+                    ? 'Firebase Rules ยังไม่อนุญาต UID แอดมินให้บันทึกภาพค่ะ กรุณาใช้ไฟล์ firebase_rules.txt ที่แนบไปวางใน Firestore Rules แล้วลองใหม่'
+                    : (error.message || 'เพิ่มภาพไม่สำเร็จค่ะ');
+                showToast(`${uploaded ? `บันทึกแล้ว ${uploaded} ภาพ • ` : ''}${message}`, 'fa-times-circle');
             } finally {
                 button.disabled = false; button.textContent = 'เพิ่มภาพที่เลือก'; input.value = '';
             }
